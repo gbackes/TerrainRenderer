@@ -1,0 +1,76 @@
+﻿#pragma kernel GenerateHeightmap
+#include "Noise.cginc"
+    
+struct TerrainSplatSettings
+{
+    float Seed;
+    int Octaves;
+    float Frequency;
+    float Lacunarity;
+    float Amplitude;
+    float Gain;            
+};
+
+struct NoiseSettings
+{
+    float Seed;
+    int Octaves;
+    float Frequency;
+    float Lacunarity;
+    float Amplitude;
+    float Gain;
+    float PerturbFeatures;   
+    float Sharpness;         
+    float AltitudeErosion;
+    float RidgeErosion;
+    float SlopeErosion;
+    float ConcavityErosion;
+};
+
+RWStructuredBuffer<int> _MinMaxBuffer;
+RWTexture2D<float> _HeightmapAtlas;
+RWTexture2D<float4> _NormalmapAtlas;
+RWStructuredBuffer<NoiseSettings> _NoiseSettings;
+
+
+
+int _NoiseCount;
+                     
+int _HeightmapSize;
+int _HeightmapSizePadded;     
+
+float2 _HeightmapAtlasPos;
+float2 _NormalmapAtlasPos;
+
+float2 _NodePos;
+float _NodeSize;   
+
+float _HeightScale;
+
+
+[numthreads(8,8,1)]
+void GenerateHeightmap(uint3 id : SV_DispatchThreadID)
+{   
+    if (id.x >= _HeightmapSizePadded || id.y >= _HeightmapSizePadded)
+        return;
+                                 
+    float hmPixelSize = (_NodeSize) / (float) (_HeightmapSize - 1);          
+
+    float2 worldPos = _NodePos + (float2(id.xy) - float2(1, 1)) * hmPixelSize;
+
+    NoiseSettings ns = _NoiseSettings[0];         
+
+
+    float noise = /*gradientfbm2D(worldPos, ns.Octaves,
+    ns.Frequency, ns.Lacunarity, ns.Gain, ns.Amplitude)  */terrainNoise(worldPos,   ns.Seed, ns.Octaves, ns.PerturbFeatures, ns.Sharpness, 
+                                        ns.AltitudeErosion, ns.RidgeErosion, ns.SlopeErosion, ns.ConcavityErosion,
+                                        ns.Frequency, ns.Lacunarity, ns.Amplitude, ns.Gain) * _HeightScale;
+  
+
+        InterlockedMin(_MinMaxBuffer[0], noise.x);
+        InterlockedMax(_MinMaxBuffer[1], noise.x);
+
+        _HeightmapAtlas[_HeightmapAtlasPos + id.xy] = noise;
+   // _NormalmapAtlas[_NormalmapAtlasPos + id.xy] = normalize(float4(noise.y, 1.0f, noise.z, 1.0f));
+
+    }
